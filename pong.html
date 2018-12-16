@@ -1,0 +1,358 @@
+<!--     
+    Copyright (C) Tim Ings <tim@tim-ings.com>, All rights reserved.
+-->
+
+<html>
+    <body>
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <br>
+        <label><input id="s_paintAIPrediction" type="checkbox">Paint AI Prediction</label>
+        <br>
+        <label><input id="s_mouseControl" type="checkbox">Mouse Control</label>
+        <br>
+        <label><input id="s_paddle1AI" type="checkbox">Paddle1 AI</label>
+        <br>
+        <label>Ball Speed<input id="s_ballSpeed" type="number" value="200"></label>
+        <br>
+        <label>Ball Speed Variation<input id="s_ballSpeedVari" type="number" value="0.4"></label>
+        <br>
+        <label>Paddle Speed<input id="s_paddleSpeed" type="number" value="500"></label>
+        <br>
+        <label>AI Error Variation<input id="s_aiSkill" type="number" value="0.2"></label>
+        <br>
+        <label>Update Speed<input id="s_updateSpeed" type="number" value="144"></label>
+        <br>
+        <button onclick="onSettingsApplied()">Apply</button>
+
+        <script>
+            let canvas;
+            let ctx;
+            let keysDown = {};
+            let ballMoving = false;
+            let ballSpeed = 200;
+            let ballSpeedVariation = 0.4;
+            let paddleSpeed = 500;
+            let mouseX = 0;
+            let mouseY = 0;
+            let paddleOffset = 10;
+            let simPosY = -100;
+            let aiMove = 0;
+            let mouseControlEnabled = false;
+            let paintAIPrediction = false;
+            let paddle1AIEnabled = false;
+            let aiSkill = 0.2;
+            let deltaTime = 0.00694444444;
+            let loop;
+
+            let ball = {
+                width: 10,
+                height: 10,
+                pos: {
+                    x: 0,
+                    y: 0,
+                },
+                velocity: {
+                    x: ballSpeed,
+                    y: ballSpeed,
+                },
+            }
+
+            let paddle1 = {
+                width: 10,
+                height: 60,
+                pos: {
+                    x: 0,
+                    y: 0,
+                },
+                score: 0,
+            }
+            let paddle2 = {
+                width: 10,
+                height: 60,
+                pos: {
+                    x: 0,
+                    y: 0,
+                },
+                score: 0,
+            }
+
+            function onSettingsApplied() {
+                paintAIPrediction = document.getElementById("s_paintAIPrediction").checked;
+                mouseControlEnabled = document.getElementById("s_mouseControl").checked;
+                paddle1AIEnabled = document.getElementById("s_paddle1AI").checked;
+                ballSpeed = document.getElementById("s_ballSpeed").value;
+                paddleSpeed = document.getElementById("s_paddleSpeed").value;
+                ballSpeedVariation = document.getElementById("s_ballSpeedVari").value;
+                aiSkill = document.getElementById("s_aiSkill").value;
+                deltaTime = 1 / document.getElementById("s_updateSpeed").value;
+                restartLoop();
+            }
+
+            function randomRange(min, max) {
+                return (Math.random() * (max - min)) + min;
+            }
+            function randomVariation(vari) {
+                return randomRange(1 - vari / 2, 1 + vari / 2);
+            }
+
+            function resetBall(vx, vy) {
+                //paddle1.pos.y = canvas.height / 2 - paddle1.height / 2;
+                //paddle2.pos.y = canvas.height / 2 - paddle2.height / 2;
+                ball.pos.x = canvas.width / 2 - ball.width / 2;
+                ball.pos.y = canvas.height / 2 - ball.height / 2;
+                ball.velocity.x = vx;
+                ball.velocity.y = vy;
+            }
+
+            function init() {
+                ballMoving = false;
+                paddle1.score = 0;
+                paddle2.score = 0;
+                resetBall(ballSpeed, ballSpeed)            
+            }
+
+            function rectsIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
+                return !(x2 > x1 + w1 || 
+                        x2 + w2 < x1 || 
+                        y2 > y1 + h1 ||
+                        y2 + h2 < y1);
+            }
+
+            function updateKeyboard() {
+                // handle player input
+                if (keysDown[38]) { // up arrow key
+                    // adjust paddle position and make sure it doesnt go out of bounds
+                    paddle1.pos.y -= deltaTime * paddleSpeed;
+                    if (paddle1.pos.y < 0) {
+                        paddle1.pos.y = 0;
+                    }
+                } else if (keysDown[40]) { // down arrow key
+                    // adjust paddle position and make sure it doesnt go out of bounds
+                    paddle1.pos.y += deltaTime * paddleSpeed;
+                    if (paddle1.pos.y + paddle1.height > canvas.height) {
+                        paddle1.pos.y = canvas.height - paddle1.height;
+                    }
+                }
+            }
+
+            function updateMouse() {
+                paddle1.pos.y = mouseY - paddle1.height / 2;
+                if (paddle1.pos.y < 0) {
+                    paddle1.pos.y = 0;
+                }
+                if (paddle1.pos.y + paddle1.height > canvas.height) {
+                    paddle1.pos.y = canvas.height - paddle1.height;
+                }
+            }
+
+            function updateBall() {
+                if (ballMoving) {
+                    ball.pos.x += ball.velocity.x * deltaTime;
+                    ball.pos.y += ball.velocity.y * deltaTime;
+
+                    // if the ball hits the right wall
+                    if (ball.pos.x + ball.width > canvas.width) {
+                        paddle1.score++;
+                        let speedX = ballSpeed * randomVariation(ballSpeedVariation);
+                        let speedY = ballSpeed * randomVariation(ballSpeedVariation);
+                        let vx = -speedX;
+                        let vy = Math.random() > 0.5 ? speedY: -speedY;
+                        resetBall(vx, vy);
+                    }
+                    // if the ball hits the left wall
+                    if (ball.pos.x < 0) {
+                        paddle2.score++;                    
+                        let speedX = ballSpeed * randomVariation(ballSpeedVariation);
+                        let speedY = ballSpeed * randomVariation(ballSpeedVariation);
+                        let vx = -speedX;
+                        let vy = Math.random() > 0.5 ? speedY: -speedY;
+                        resetBall(vx, vy);
+                    }
+                    
+                    // if the ball hits the bottom wall
+                    if (ball.pos.y + ball.height > canvas.height) {
+                        ball.velocity.y = -ball.velocity.y;
+                    }
+                    // if the ball hits the top wall
+                    if (ball.pos.y < 0) {
+                        ball.velocity.y = -ball.velocity.y;
+                    }
+                }
+            }
+
+            function updateCollision() {
+                if (rectsIntersect(paddle1.pos.x, paddle1.pos.y, paddle1.width, paddle1.height, 
+                                    ball.pos.x, ball.pos.y, ball.width, ball.height)) {
+                    ball.velocity.x = -ball.velocity.x;
+                    console.log("ball hit paddle 1");
+                    // wev just sent the ball back at the AI, so lets let it make its move
+                    calculateAIMove();
+                }
+                else if (rectsIntersect(paddle2.pos.x, paddle2.pos.y, paddle2.width, paddle2.height, 
+                                    ball.pos.x, ball.pos.y, ball.width, ball.height)) {
+                    ball.velocity.x = -ball.velocity.x;
+                    console.log("ball hit paddle 2");
+                }
+            }
+
+            function calculateAIMove() {
+                // predict the balls x coord when it gets to our goal
+                let simPosX = ball.pos.x;
+                simPosY = ball.pos.y;
+                let simVelX = ball.velocity.x;
+                let simVelY = ball.velocity.y;
+                while (simPosX + ball.width < canvas.width - paddleOffset - paddle2.width && simVelX > 0) {
+                    simPosX += simVelX * deltaTime;
+                    simPosY += simVelY * deltaTime;
+                    // if the ball hits the bottom wall
+                    if (simPosY + ball.height > canvas.height) {
+                        simVelY = -simVelY;
+                    }
+                    // if the ball hits the top wall
+                    if (simPosY < 0) {
+                        simVelY = -simVelY;
+                    }
+                }
+
+                aiMove = simPosY * randomVariation(aiSkill);
+
+                console.log("Calculated:", simPosY);
+                console.log("Calculated with Error:", aiMove);
+            }
+
+            function updateAIMove() {
+                if (paddle2.pos.y + paddle2.height / 2 - ball.height / 2 < aiMove) {
+                    paddle2.pos.y += paddleSpeed * deltaTime;
+                    if (paddle2.pos.y + paddle2.height > canvas.height) {
+                        paddle2.pos.y = canvas.height - paddle2.height;
+                    }
+                }
+                if (paddle2.pos.y + paddle2.height / 2 - ball.height / 2 > aiMove) {
+                    paddle2.pos.y -= paddleSpeed * deltaTime;
+                    if (paddle2.pos.y < 0) {
+                        paddle2.pos.y = 0;
+                    }
+                }
+            }
+
+            function update() {
+                // set paddle x pos to each side of the screen
+                paddle1.pos.x = paddleOffset;
+                paddle2.pos.x = canvas.width - paddle2.width - paddleOffset;
+                
+                if (paddle1AIEnabled) {
+                    paddle1.pos.y = ball.pos.y - paddle1.height / 2; 
+                }
+
+                if (mouseControlEnabled) {
+                    updateMouse();
+                } else {
+                    updateKeyboard();
+                }
+                updateAIMove();
+                updateBall();
+                updateCollision();
+                
+                // reset thge game when enter is pressed
+                if (keysDown[13]) { // enter
+                    init();
+                    ballMoving = true;
+                }
+            }
+
+            function drawInstructions(ctx) {
+                if (!ballMoving) {
+                    ctx.font = "60px Consolas";
+                    ctx.fillStyle = "#000000";
+                    let txt = "Press <Enter>";
+                    let txtWidth = ctx.measureText(txt).width;
+                    ctx.fillText(txt, canvas.width / 2 - txtWidth / 2, canvas.height / 2 - 60);
+                }
+            }
+
+            function drawScore(ctx) {
+                ctx.font = "60px Consolas";
+                ctx.fillStyle = "#000000";
+                let txt = paddle1.score + " - " + paddle2.score;
+                let txtWidth = ctx.measureText(txt).width;
+                ctx.fillText(txt, canvas.width / 2 - txtWidth / 2, 60);
+            }
+
+            function drawPaddle(ctx, p) {
+                ctx.fillStyle = "#000000";
+                ctx.fillRect(p.pos.x, p.pos.y, p.width, p.height);
+            }
+            
+            function drawBall(ctx, b) {
+                ctx.fillStyle = "#00DD00";
+                ctx.fillRect(b.pos.x, b.pos.y, b.width, b.height);
+            }
+
+            function drawBorder(ctx) {
+                ctx.fillStyle = "#00DD00";
+                ctx.rect(0, 0, canvas.width, canvas.height);
+                ctx.stroke();
+            }
+
+            function drawAIPrediction(ctx) {
+                ctx.fillStyle = "#FF0000";
+                ctx.fillRect(canvas.width - ball.width - paddleOffset - paddle2.width, simPosY, ball.width, ball.height);
+            }
+
+            // main draw function
+            function draw(ctx) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                drawBorder(ctx);
+                drawBall(ctx, ball);
+                drawPaddle(ctx, paddle1);
+                drawPaddle(ctx, paddle2);
+                drawScore(ctx);
+                drawInstructions(ctx);
+
+                if (paintAIPrediction) {
+                    drawAIPrediction(ctx);
+                }
+            }
+
+            // input events
+            document.onkeydown = function(e) {
+                e = e || window.event;
+                var charCode = e.keyCode || e.which;
+                keysDown[charCode] = true;
+            };
+            document.onkeyup = function(e) {
+                e = e || window.event;
+                var charCode = e.keyCode || e.which;
+                keysDown[charCode] = false;
+            };
+            document.onmousemove = function(e) {
+                mouseX = e.x;
+                mouseY = e.y;
+            }
+
+            function restartLoop() {
+                if (loop) {
+                    clearInterval(loop);
+                }
+                console.log("Starting Loop with deltaTime", deltaTime);
+                loop = setInterval(function() {
+                    update();
+                    draw(ctx);
+                }, deltaTime);
+            }
+
+            // entry point
+            function main() {
+                canvas = document.getElementById("canvas");
+                ctx = canvas.getContext("2d");
+                
+                init();
+
+                restartLoop();
+            }
+
+            main();
+        </script>
+    </body>
+</html>
